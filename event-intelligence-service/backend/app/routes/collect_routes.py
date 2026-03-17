@@ -22,7 +22,7 @@ def collect_stocks(tickers: str | None = Query(None, description="Comma-separate
 
 @router.post("/news")
 def collect_news():
-    """Collect Australian business headlines."""
+    """Collect Australian stock market news from Google News RSS."""
     articles = fetch_financial_news()
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     save_raw(articles, "news", f"news_{ts}.json")
@@ -30,7 +30,9 @@ def collect_news():
 
 
 @router.post("/pipeline")
-def run_pipeline(tickers: str | None = Query(None, description="Comma-separated: BHP,CBA,NAB")):
+def run_pipeline(
+    tickers: str | None = Query(None, description="Comma-separated: BHP,CBA,NAB"),
+):
     """
     Run full pipeline: collect stocks + news, analyze sentiment, save standardized.
     """
@@ -77,7 +79,7 @@ def run_pipeline(tickers: str | None = Query(None, description="Comma-separated:
                 "sentiment": sentiment,
                 "impact_score": score,
                 "related_stock": related[0] if related else None,
-                "data_source": "news_api",
+                "data_source": "yahoo_finance",
             },
         })
 

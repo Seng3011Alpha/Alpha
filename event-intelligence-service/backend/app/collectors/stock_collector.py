@@ -3,20 +3,97 @@ import time
 from datetime import datetime
 from typing import Optional
 
-import pandas as pd
-import yfinance as yf
+import requests
+
+YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+YAHOO_CHART_URL_FALLBACK = "https://query2.finance.yahoo.com/v8/finance/chart/{symbol}"
+
+REQUEST_TIMEOUT = 10
+REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-AU,en;q=0.9",
+    "Origin": "https://finance.yahoo.com",
+    "Referer": "https://finance.yahoo.com/",
+}
+
+MOCK_PRICES: dict[str, tuple[float, float]] = {
+    "BHP.AX": (45.20, 44.80),
+    "CBA.AX": (128.50, 127.90),
+    "NAB.AX": (35.60, 35.40),
+    "WBC.AX": (27.30, 27.10),
+    "ANZ.AX": (29.80, 29.50),
+    "RIO.AX": (118.00, 116.50),
+    "WDS.AX": (24.10, 23.80),
+    "MQG.AX": (198.00, 195.00),
+    "CSL.AX": (285.00, 282.00),
+    "WOW.AX": (32.40, 32.00),
+}
+
+
+def _normalize_symbol(ticker: str) -> str:
+    return ticker if ticker.endswith(".AX") else f"{ticker}.AX"
+
+
+def _fetch_yahoo_chart(symbol: str) -> Optional[dict]:
+    """
+    Fetch OHLCV data directly from Yahoo Finance v8 chart API using requests.
+    Tries query1 first, then query2 as fallback.
+    """
+    params = {"range": "5d", "interval": "1d", "includePrePost": "false"}
+
+    for base_url in (YAHOO_CHART_URL, YAHOO_CHART_URL_FALLBACK):
+        try:
+            url = base_url.format(symbol=symbol)
+            resp = requests.get(url, headers=REQUEST_HEADERS, params=params, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+
+            result = data.get("chart", {}).get("result")
+            if not result:
+                continue
+
+            chart = result[0]
+            meta = chart.get("meta", {})
+            timestamps = chart.get("timestamp", [])
+            indicators = chart.get("indicators", {}).get("quote", [{}])[0]
+
+            closes = indicators.get("close", [])
+            opens = indicators.get("open", [])
+            volumes = indicators.get("volume", [])
+
+            valid_closes = [c for c in closes if c is not None]
+            if len(valid_closes) < 1:
+                continue
+
+            latest_close = valid_closes[-1]
+            prev_close = valid_closes[-2] if len(valid_closes) > 1 else valid_closes[0]
+            latest_open = next((o for o in reversed(opens) if o is not None), prev_close)
+            latest_vol = next((v for v in reversed(volumes) if v is not None), 0)
+
+            change_pct = ((latest_close - prev_close) / prev_close * 100) if prev_close else 0
+
+            return {
+                "ticker": symbol,
+                "Quote Price": round(float(latest_close), 3),
+                "Previous Close": round(float(prev_close), 3),
+                "Open": round(float(latest_open), 3),
+                "Volume": int(latest_vol),
+                "change_percent": round(change_pct, 2),
+                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "company": meta.get("shortName") or meta.get("symbol", symbol),
+                "data_source": "yahoo_finance",
+            }
+        except Exception:
+            continue
+
+    return None
 
 
 def _mock_stock_data(symbol: str) -> dict:
-    """Fallback when Yahoo Finance is blocked or returns errors."""
-    prices = {
-        "BHP.AX": (45.20, 44.80),
-        "CBA.AX": (128.50, 127.90),
-        "NAB.AX": (35.60, 35.40),
-        "WBC.AX": (27.30, 27.10),
-        "ANZ.AX": (29.80, 29.50),
-    }
-    price, prev = prices.get(symbol, (50.0, 49.5))
+    """Fallback when all real data sources fail."""
+    price, prev = MOCK_PRICES.get(symbol, (50.0, 49.5))
     return {
         "ticker": symbol,
         "Quote Price": price,
@@ -26,105 +103,39 @@ def _mock_stock_data(symbol: str) -> dict:
         "change_percent": round((price - prev) / prev * 100, 2),
         "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
         "company": symbol,
+        "data_source": "mock",
     }
 
 
-def _parse_ticker_from_download(df: pd.DataFrame, symbol: str) -> Optional[dict]:
-    """Extract stock data from a DataFrame with Open/High/Low/Close/Volume columns."""
-    try:
-        latest = df["Close"].iloc[-1]
-        prev = df["Close"].iloc[-2] if len(df) > 1 else latest
-        change_pct = ((latest - prev) / prev * 100) if prev and prev != 0 else 0
-
-        return {
-            "ticker": symbol,
-            "Quote Price": float(latest),
-            "Previous Close": float(prev),
-            "Open": float(df["Open"].iloc[-1]),
-            "Volume": int(df["Volume"].iloc[-1]),
-            "change_percent": round(change_pct, 2),
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-            "company": symbol,
-        }
-    except (KeyError, IndexError, TypeError):
-        return None
-
-
-def fetch_stock_data(ticker: str, use_mock_on_fail: bool = True) -> Optional[dict]:
+def fetch_stock_data(ticker: str) -> Optional[dict]:
     """
-    Fetch ASX stock data. Uses yf.download only (no stock.info) to avoid rate limits.
-    Falls back to mock data when Yahoo returns HTML/empty (blocked or rate limited).
+    Fetch a single ASX stock. Returns None if fetch fails and mock is disabled.
     """
-    symbol = ticker if ticker.endswith(".AX") else f"{ticker}.AX"
-    try:
-        data = yf.download(symbol, period="5d", progress=False, threads=False, auto_adjust=False)
-        if data.empty or len(data) < 1:
-            raise ValueError("Empty response")
-        return _parse_ticker_from_download(data, symbol)
-    except Exception:
-        if use_mock_on_fail and os.getenv("USE_MOCK_STOCKS", "true").lower() == "true":
-            return _mock_stock_data(symbol)
-        return None
+    symbol = _normalize_symbol(ticker)
+    result = _fetch_yahoo_chart(symbol)
+    if result:
+        return result
+
+    if os.getenv("USE_MOCK_STOCKS", "true").lower() == "true":
+        return _mock_stock_data(symbol)
+    return None
 
 
 def fetch_multiple_stocks(tickers: list[str]) -> list[dict]:
     """
-    Fetch multiple ASX stocks. Uses batch download, then sequential, then mock fallback.
+    Fetch multiple ASX stocks sequentially.
+    Adds a small delay between requests to reduce chance of rate limiting.
     """
-    symbols = [t if t.endswith(".AX") else f"{t}.AX" for t in tickers]
-    if not symbols:
-        return []
-
-    try:
-        data = yf.download(
-            " ".join(symbols),
-            period="5d",
-            group_by="ticker",
-            progress=False,
-            threads=False,
-            auto_adjust=False,
-        )
-
-        if data.empty:
-            raise ValueError("Empty response")
-
-        results = []
-        if len(symbols) == 1:
-            parsed = _parse_ticker_from_download(data, symbols[0])
-            if parsed:
-                results.append(parsed)
-        elif isinstance(data.columns, pd.MultiIndex):
-            for sym in symbols:
-                try:
-                    close_vals = data["Close"][sym] if sym in data["Close"].columns else None
-                    if close_vals is None or len(close_vals) < 1:
-                        continue
-                    sub = pd.DataFrame({
-                        "Open": data["Open"][sym],
-                        "High": data["High"][sym],
-                        "Low": data["Low"][sym],
-                        "Close": data["Close"][sym],
-                        "Volume": data["Volume"][sym],
-                    })
-                    parsed = _parse_ticker_from_download(sub, sym)
-                    if parsed:
-                        results.append(parsed)
-                except (KeyError, TypeError):
-                    pass
-        else:
-            parsed = _parse_ticker_from_download(data, symbols[0])
-            if parsed:
-                results.append(parsed)
-
-        if results:
-            return results
-    except Exception:
-        pass
-
+    symbols = [_normalize_symbol(t) for t in tickers]
     results = []
+
     for sym in symbols:
-        d = fetch_stock_data(sym)
-        if d:
-            results.append(d)
-        time.sleep(1)
-    return results if results else [_mock_stock_data(s) for s in symbols]
+        data = _fetch_yahoo_chart(sym)
+        if data:
+            results.append(data)
+        else:
+            if os.getenv("USE_MOCK_STOCKS", "true").lower() == "true":
+                results.append(_mock_stock_data(sym))
+        time.sleep(0.5)
+
+    return results
