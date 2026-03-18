@@ -121,7 +121,8 @@ class TestNormalizeSymbol:
         assert _normalise_symbol("BHP.AX") == "BHP.AX"
 
     def test_lowercase_input(self):
-        assert _normalise_symbol("cba") == "cba.AX"
+        #lowercase should be uppercased so stored tickers always match query lookups
+        assert _normalise_symbol("cba") == "CBA.AX"
 
 
 class TestMockStockData:

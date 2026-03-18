@@ -33,7 +33,8 @@ MOCK_PRICES: dict[str, tuple[float, float]] = {
 
 
 def _normalise_symbol(ticker: str) -> str:
-    return ticker if ticker.endswith(".AX") else f"{ticker}.AX"
+    upper = ticker.upper()
+    return upper if upper.endswith(".AX") else f"{upper}.AX"
 
 
 def _fetch_yahoo_chart(symbol: str) -> Optional[dict]:
