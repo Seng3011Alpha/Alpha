@@ -128,7 +128,7 @@ class TestCollectPipeline:
     def test_pipeline_success(self):
         with patch("app.routes.collect_routes.fetch_multiple_stocks", return_value=[MOCK_STOCK]), \
              patch("app.routes.collect_routes.fetch_financial_news", return_value=MOCK_NEWS), \
-             patch("app.routes.collect_routes.save_standardized"):
+             patch("app.routes.collect_routes.save_standardised"):
             response = client.post("/collect/pipeline")
             assert response.status_code == 200
             body = response.json()
@@ -139,7 +139,7 @@ class TestCollectPipeline:
     def test_pipeline_custom_tickers(self):
         with patch("app.routes.collect_routes.fetch_multiple_stocks", return_value=[MOCK_STOCK]) as mock_fetch, \
              patch("app.routes.collect_routes.fetch_financial_news", return_value=[]), \
-             patch("app.routes.collect_routes.save_standardized"):
+             patch("app.routes.collect_routes.save_standardised"):
             client.post("/collect/pipeline?tickers=RIO,WDS")
             called_with = mock_fetch.call_args[0][0]
             assert "RIO" in called_with
@@ -148,7 +148,7 @@ class TestCollectPipeline:
 
 class TestGetSentiment:
     def test_returns_sentiment_for_stock(self):
-        with patch("app.routes.analysis_routes.load_standardized", return_value=MOCK_DATASET):
+        with patch("app.routes.analysis_routes.load_standardised", return_value=MOCK_DATASET):
             response = client.get("/api/sentiment?stock=BHP")
             assert response.status_code == 200
             body = response.json()
@@ -158,14 +158,14 @@ class TestGetSentiment:
 
     def test_ax_suffix_normalisation(self):
         #bhp and bhp.ax should resolve to the same ticker
-        with patch("app.routes.analysis_routes.load_standardized", return_value=MOCK_DATASET):
+        with patch("app.routes.analysis_routes.load_standardised", return_value=MOCK_DATASET):
             r1 = client.get("/api/sentiment?stock=BHP")
             r2 = client.get("/api/sentiment?stock=BHP.AX")
             assert r1.json()["stock"] == r2.json()["stock"]
 
     def test_404_when_no_data(self):
         #pipeline hasn't been run yet so there's nothing on disc
-        with patch("app.routes.analysis_routes.load_standardized", return_value=None):
+        with patch("app.routes.analysis_routes.load_standardised", return_value=None):
             response = client.get("/api/sentiment?stock=BHP")
             assert response.status_code == 404
 
@@ -175,7 +175,7 @@ class TestGetSentiment:
 
     def test_unknown_stock_returns_neutral_sentiment(self):
         #xyz has no events in the dataset so should default to neutral
-        with patch("app.routes.analysis_routes.load_standardized", return_value=MOCK_DATASET):
+        with patch("app.routes.analysis_routes.load_standardised", return_value=MOCK_DATASET):
             response = client.get("/api/sentiment?stock=XYZ")
             assert response.status_code == 200
             assert response.json()["overall_sentiment"] == "neutral"
@@ -183,7 +183,7 @@ class TestGetSentiment:
 
 class TestGetEvents:
     def test_returns_full_dataset(self):
-        with patch("app.routes.analysis_routes.load_standardized", return_value=MOCK_DATASET):
+        with patch("app.routes.analysis_routes.load_standardised", return_value=MOCK_DATASET):
             response = client.get("/api/events")
             assert response.status_code == 200
             body = response.json()
@@ -191,12 +191,12 @@ class TestGetEvents:
             assert len(body["events"]) == 2
 
     def test_404_when_no_data(self):
-        with patch("app.routes.analysis_routes.load_standardized", return_value=None):
+        with patch("app.routes.analysis_routes.load_standardised", return_value=None):
             response = client.get("/api/events")
             assert response.status_code == 404
 
     def test_response_has_adage_fields(self):
-        with patch("app.routes.analysis_routes.load_standardized", return_value=MOCK_DATASET):
+        with patch("app.routes.analysis_routes.load_standardised", return_value=MOCK_DATASET):
             body = client.get("/api/events").json()
             assert "data_source" in body
             assert "dataset_type" in body

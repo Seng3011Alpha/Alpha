@@ -2,14 +2,14 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 
 from app.collectors import fetch_financial_news, fetch_stock_data, fetch_multiple_stocks
-from app.services import save_raw, save_standardized, analyze_sentiment, extract_related_stocks
+from app.services import save_raw, save_standardised, analyse_sentiment, extract_related_stocks
 
 router = APIRouter(prefix="/collect", tags=["Data Collection"])
 
 
 @router.post("/stocks")
 def collect_stocks(tickers: str | None = Query(None, description="Comma-separated: BHP,CBA,NAB")):
-    """Collect stock data for given ASX tickers. Default: BHP, CBA, NAB, WBC, ANZ."""
+    #collect stock data for given asx tickers; defaults to bhp, cba, nab, wbc, anz
     default = ["BHP", "CBA", "NAB", "WBC", "ANZ"]
     ticker_list = [t.strip() for t in tickers.split(",") if t.strip()] if tickers else default
     data = fetch_multiple_stocks(ticker_list)
@@ -22,7 +22,7 @@ def collect_stocks(tickers: str | None = Query(None, description="Comma-separate
 
 @router.post("/news")
 def collect_news():
-    """Collect Australian stock market news from Google News RSS."""
+    #collect australian stock market news from google news rss
     articles = fetch_financial_news()
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     save_raw(articles, "news", f"news_{ts}.json")
@@ -33,9 +33,7 @@ def collect_news():
 def run_pipeline(
     tickers: str | None = Query(None, description="Comma-separated: BHP,CBA,NAB"),
 ):
-    """
-    Run full pipeline: collect stocks + news, analyze sentiment, save standardized.
-    """
+    #run the full pipeline: collect stocks + news, analyse sentiment, save standardised
     default = ["BHP", "CBA", "NAB", "WBC", "ANZ"]
     ticker_list = [t.strip() for t in tickers.split(",") if t.strip()] if tickers else default
 
@@ -62,15 +60,13 @@ def run_pipeline(
 
     for n in news:
         text = f"{n.get('title', '')} {n.get('description', '')}"
-        sentiment, score = analyze_sentiment(text)
+        sentiment, score = analyse_sentiment(text)
         related = extract_related_stocks(text, [t.replace(".AX", "") for t in ticker_list])
-        summary = f"{n.get('title', '')} {n.get('description', '')}".strip()
-
         events.append({
             "time_object": {"timestamp": now, "duration": 1, "duration_unit": "hour", "timezone": "UTC"},
             "event_type": "Stock news",
             "attribute": {
-                "summary": summary,
+                "summary": n.get("title", ""),
                 "title": n.get("title"),
                 "link": n.get("url"),
                 "published": n.get("published_at"),
@@ -79,7 +75,7 @@ def run_pipeline(
                 "sentiment": sentiment,
                 "impact_score": score,
                 "related_stock": related[0] if related else None,
-                "data_source": "yahoo_finance",
+                "data_source": "google_news_rss",
             },
         })
 
@@ -91,5 +87,5 @@ def run_pipeline(
         "events": events,
     }
 
-    save_standardized(dataset, "combined_events.json")
+    save_standardised(dataset, "combined_events.json")
     return {"events_count": len(events), "stocks": len(stocks), "news": len(news)}

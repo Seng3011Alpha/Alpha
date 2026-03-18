@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 from app.collectors.stock_collector import (
     fetch_stock_data,
     fetch_multiple_stocks,
-    _normalize_symbol,
+    _normalise_symbol,
     _mock_stock_data,
     _fetch_yahoo_chart,
 )
@@ -115,13 +115,13 @@ class TestFetchYahooChart:
 
 class TestNormalizeSymbol:
     def test_adds_ax_suffix(self):
-        assert _normalize_symbol("BHP") == "BHP.AX"
+        assert _normalise_symbol("BHP") == "BHP.AX"
 
     def test_keeps_existing_suffix(self):
-        assert _normalize_symbol("BHP.AX") == "BHP.AX"
+        assert _normalise_symbol("BHP.AX") == "BHP.AX"
 
     def test_lowercase_input(self):
-        assert _normalize_symbol("cba") == "cba.AX"
+        assert _normalise_symbol("cba") == "cba.AX"
 
 
 class TestMockStockData:

@@ -32,15 +32,12 @@ MOCK_PRICES: dict[str, tuple[float, float]] = {
 }
 
 
-def _normalize_symbol(ticker: str) -> str:
+def _normalise_symbol(ticker: str) -> str:
     return ticker if ticker.endswith(".AX") else f"{ticker}.AX"
 
 
 def _fetch_yahoo_chart(symbol: str) -> Optional[dict]:
-    """
-    Fetch OHLCV data directly from Yahoo Finance v8 chart API using requests.
-    Tries query1 first, then query2 as fallback.
-    """
+    #fetch ohlcv data from yahoo finance v8 api; tries query1 first then query2 as fallback
     params = {"range": "5d", "interval": "1d", "includePrePost": "false"}
 
     for base_url in (YAHOO_CHART_URL, YAHOO_CHART_URL_FALLBACK):
@@ -72,12 +69,17 @@ def _fetch_yahoo_chart(symbol: str) -> Optional[dict]:
             latest_open = next((o for o in reversed(opens) if o is not None), prev_close)
             latest_vol = next((v for v in reversed(volumes) if v is not None), 0)
 
-            change_pct = ((latest_close - prev_close) / prev_close * 100) if prev_close else 0
+            #prefer meta fields - more reliable than reconstructing from the close array
+            quote_price = meta.get("regularMarketPrice") or latest_close
+            prev_close_val = meta.get("previousClose") or prev_close
+            change_pct = meta.get("regularMarketChangePercent") or (
+                ((quote_price - prev_close_val) / prev_close_val * 100) if prev_close_val else 0
+            )
 
             return {
                 "ticker": symbol,
-                "Quote Price": round(float(latest_close), 3),
-                "Previous Close": round(float(prev_close), 3),
+                "Quote Price": round(float(quote_price), 3),
+                "Previous Close": round(float(prev_close_val), 3),
                 "Open": round(float(latest_open), 3),
                 "Volume": int(latest_vol),
                 "change_percent": round(change_pct, 2),
@@ -92,7 +94,7 @@ def _fetch_yahoo_chart(symbol: str) -> Optional[dict]:
 
 
 def _mock_stock_data(symbol: str) -> dict:
-    """Fallback when all real data sources fail."""
+    #fallback when all real data sources fail
     price, prev = MOCK_PRICES.get(symbol, (50.0, 49.5))
     return {
         "ticker": symbol,
@@ -108,10 +110,8 @@ def _mock_stock_data(symbol: str) -> dict:
 
 
 def fetch_stock_data(ticker: str) -> Optional[dict]:
-    """
-    Fetch a single ASX stock. Returns None if fetch fails and mock is disabled.
-    """
-    symbol = _normalize_symbol(ticker)
+    #fetch a single asx stock; returns none if fetch fails and mock is disabled
+    symbol = _normalise_symbol(ticker)
     result = _fetch_yahoo_chart(symbol)
     if result:
         return result
@@ -122,11 +122,8 @@ def fetch_stock_data(ticker: str) -> Optional[dict]:
 
 
 def fetch_multiple_stocks(tickers: list[str]) -> list[dict]:
-    """
-    Fetch multiple ASX stocks sequentially.
-    Adds a small delay between requests to reduce chance of rate limiting.
-    """
-    symbols = [_normalize_symbol(t) for t in tickers]
+    #fetch multiple asx stocks in sequence with a short delay to reduce rate limiting
+    symbols = [_normalise_symbol(t) for t in tickers]
     results = []
 
     for sym in symbols:
