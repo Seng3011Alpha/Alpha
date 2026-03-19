@@ -1,17 +1,14 @@
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services import load_standardized
+from app.services import load_standardised
 
 router = APIRouter(prefix="/api", tags=["Data Retrieval & Analysis"])
 
 
 @router.get("/sentiment")
 def get_sentiment(stock: str = Query(..., description="ASX ticker e.g. BHP or BHP.AX")):
-    """
-    Get sentiment and related data for a stock.
-    Returns pre-processed data from standardized storage.
-    """
-    data = load_standardized("combined_events.json")
+    #get sentiment and stock data for a ticker from standardised storage
+    data = load_standardised("combined_events.json")
     if not data:
         raise HTTPException(status_code=404, detail="No data available. Run /collect/pipeline first.")
 
@@ -51,8 +48,8 @@ def _aggregate_sentiment(news_events: list) -> str:
 
 @router.get("/events")
 def get_events():
-    """Get full combined events dataset."""
-    data = load_standardized("combined_events.json")
+    #return the full combined events dataset from standardised storage
+    data = load_standardised("combined_events.json")
     if not data:
         raise HTTPException(status_code=404, detail="No data available. Run /collect/pipeline first.")
     return data

@@ -31,7 +31,7 @@ Open http://localhost:8000/docs for Swagger UI.
 
 ## API Flow
 
-1. **Collect data**: `POST /collect/pipeline` - fetches stocks + news, runs sentiment, saves to `data/standardized/`
+1. **Collect data**: `POST /collect/pipeline` - fetches stocks + news, runs sentiment, saves to `data/standardised/`
 2. **Get sentiment**: `GET /api/sentiment?stock=BHP` - returns stock price + related news sentiment
 3. **Get events**: `GET /api/events` - returns full ADAGE event dataset
 

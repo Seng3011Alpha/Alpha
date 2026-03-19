@@ -1,11 +1,8 @@
+#adage 3.0 data model aligned with the specification
+#top-level: data_source, dataset_type, dataset_id, time_object, events
+#event fields: time_object, event_type, attribute (flexible dict)
 from pydantic import BaseModel
 from typing import Optional, Any
-
-"""
-ADAGE 3.0 Data Model - aligned with specification.
-Top-level: data_source, dataset_type, dataset_id, time_object, events.
-Event: time_object (timestamp, duration?, duration_unit?, timezone), event_type, attribute (flexible dict).
-"""
 
 
 class TimeObject(BaseModel):
