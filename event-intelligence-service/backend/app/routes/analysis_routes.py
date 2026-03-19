@@ -5,6 +5,51 @@ from app.services import load_standardised
 router = APIRouter(prefix="/api", tags=["Data Retrieval & Analysis"])
 
 
+@router.get("/analysis")
+def get_analysis(stock: str = Query(..., description="ASX ticker e.g. BHP or BHP.AX")):
+    """
+    Return historical OHLCV series and computed indicators (MA5, MA20, volatility,
+    52w high/low, day's range) for a stock from the last /collect/history run.
+    """
+    data = load_standardised("history_events.json")
+    if not data:
+        raise HTTPException(
+            status_code=404,
+            detail="No history available. Run POST /collect/history first.",
+        )
+
+    ticker = stock.upper()
+    if not ticker.endswith(".AX"):
+        ticker = f"{ticker}.AX"
+
+    ohlc = [
+        e["attribute"]
+        for e in data["events"]
+        if e["event_type"] == "Stock ohlc" and e["attribute"].get("ticker") == ticker
+    ]
+    analysis_events = [
+        e["attribute"]
+        for e in data["events"]
+        if e["event_type"] == "Stock analysis" and e["attribute"].get("ticker") == ticker
+    ]
+
+    if not ohlc and not analysis_events:
+        raise HTTPException(status_code=404, detail=f"No history found for {ticker}.")
+
+    ohlc_sorted = sorted(ohlc, key=lambda x: x.get("date", "")) if ohlc else []
+
+    return {
+        "stock": ticker,
+        "period": analysis_events[0].get("period") if analysis_events else None,
+        "indicators": {k: v for k, v in analysis_events[0].items() if k not in ("ticker", "data_source", "period")} if analysis_events else None,
+        "ohlc_series": [
+            {k: v for k, v in row.items() if k not in ("ticker", "data_source")}
+            for row in ohlc_sorted
+        ],
+        "data_points": len(ohlc_sorted),
+    }
+
+
 @router.get("/sentiment")
 def get_sentiment(stock: str = Query(..., description="ASX ticker e.g. BHP or BHP.AX")):
     #get sentiment and stock data for a ticker from standardised storage

@@ -1,7 +1,7 @@
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query
 
-from app.collectors import fetch_financial_news, fetch_stock_data, fetch_multiple_stocks
+from app.collectors import fetch_financial_news, fetch_stock_data, fetch_multiple_stocks, fetch_stock_history
 from app.services import save_raw, save_standardised, analyse_sentiment, extract_related_stocks
 
 router = APIRouter(prefix="/collect", tags=["Data Collection"])
@@ -27,6 +27,88 @@ def collect_news():
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     save_raw(articles, "news", f"news_{ts}.json")
     return {"collected": len(articles)}
+
+
+@router.post("/history")
+def collect_history(
+    tickers: str | None = Query(None, description="Comma-separated: BHP,CBA,NAB"),
+    period: str = Query("1mo", description="History period: 1mo, 3mo, 6mo, 1y"),
+):
+    """
+    Collect historical OHLCV + indicators for given tickers and save as ADAGE events.
+    Stores each day as a Stock ohlc event and indicators as a Stock analysis event.
+    """
+    allowed_periods = {"1mo", "3mo", "6mo", "1y"}
+    if period not in allowed_periods:
+        raise HTTPException(status_code=400, detail=f"period must be one of {allowed_periods}")
+
+    default = ["BHP", "CBA", "NAB", "WBC", "ANZ"]
+    ticker_list = [t.strip() for t in tickers.split(",") if t.strip()] if tickers else default
+
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    events = []
+    collected = []
+
+    for ticker in ticker_list:
+        hist = fetch_stock_history(ticker, period=period)
+        if not hist:
+            continue
+
+        collected.append(ticker.upper())
+        sym = hist["quote"]["ticker"]
+
+        for row in hist["ohlc_series"]:
+            events.append({
+                "time_object": {"timestamp": row["date"], "timezone": "UTC"},
+                "event_type": "Stock ohlc",
+                "attribute": {
+                    "ticker": sym,
+                    "Open": row["Open"],
+                    "High": row["High"],
+                    "Low": row["Low"],
+                    "Close": row["Close"],
+                    "Adj Close": row["Adj Close"],
+                    "Volume": row["Volume"],
+                    "data_source": "yahoo_finance",
+                },
+            })
+
+        ind = hist["indicators"]
+        events.append({
+            "time_object": {"timestamp": now, "timezone": "UTC"},
+            "event_type": "Stock analysis",
+            "attribute": {
+                "ticker": sym,
+                "MA5": ind["MA5"],
+                "MA20": ind["MA20"],
+                "volatility_annual_pct": ind["volatility_annual_pct"],
+                "week52_high": ind["week52_high"],
+                "week52_low": ind["week52_low"],
+                "days_high": ind["days_high"],
+                "days_low": ind["days_low"],
+                "period": period,
+                "data_source": "yahoo_finance",
+            },
+        })
+
+    dataset = {
+        "data_source": "event_intelligence",
+        "dataset_type": "Daily stock data",
+        "dataset_id": "s3://event-intelligence/history_events.json",
+        "time_object": {"timestamp": now, "timezone": "UTC"},
+        "events": events,
+    }
+
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    save_raw(dataset, "stocks", f"history_{ts}.json")
+    save_standardised(dataset, "history_events.json")
+
+    return {
+        "tickers": collected,
+        "period": period,
+        "ohlc_events": sum(1 for e in events if e["event_type"] == "Stock ohlc"),
+        "analysis_events": sum(1 for e in events if e["event_type"] == "Stock analysis"),
+    }
 
 
 @router.post("/pipeline")
