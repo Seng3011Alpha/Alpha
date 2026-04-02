@@ -163,11 +163,17 @@ class TestGetSentiment:
             r2 = client.get("/api/sentiment?stock=BHP.AX")
             assert r1.json()["stock"] == r2.json()["stock"]
 
-    def test_404_when_no_data(self):
-        #pipeline hasn't been run yet so there's nothing on disc
-        with patch("app.routes.analysis_routes.load_standardised", return_value=None):
+    def test_live_fetch_when_no_cache(self):
+        #no cache on disc falls back to live fetch and still returns 200
+        with patch("app.routes.analysis_routes.load_standardised", return_value=None), \
+             patch("app.routes.analysis_routes.fetch_stock_data", return_value=MOCK_STOCK), \
+             patch("app.routes.analysis_routes.fetch_financial_news", return_value=MOCK_NEWS):
             response = client.get("/api/sentiment?stock=BHP")
-            assert response.status_code == 404
+            assert response.status_code == 200
+            body = response.json()
+            assert body["cached"] is False
+            assert body["stock_data"] is not None
+            assert "overall_sentiment" in body
 
     def test_missing_stock_param_returns_422(self):
         response = client.get("/api/sentiment")
