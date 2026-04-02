@@ -137,3 +137,131 @@ def fetch_multiple_stocks(tickers: list[str]) -> list[dict]:
         time.sleep(0.5)
 
     return results
+
+
+def fetch_stock_history(ticker: str, period: str = "1mo") -> Optional[dict]:
+    """
+    Fetch historical OHLCV for one ASX stock and compute derived indicators.
+
+    Returns a dict containing:
+      - quote:      latest price snapshot (same shape as fetch_stock_data)
+      - ohlc_series: list of daily OHLCV dicts (ADAGE Stock ohlc format)
+      - indicators:  MA5, MA20, volatility_annual, week52_high, week52_low, days_range
+    """
+    symbol = _normalise_symbol(ticker)
+    params = {"range": period, "interval": "1d", "includePrePost": "false"}
+
+    for base_url in (YAHOO_CHART_URL, YAHOO_CHART_URL_FALLBACK):
+        try:
+            url = base_url.format(symbol=symbol)
+            resp = requests.get(url, headers=REQUEST_HEADERS, params=params, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+
+            result = data.get("chart", {}).get("result")
+            if not result:
+                continue
+
+            chart = result[0]
+            meta = chart.get("meta", {})
+            timestamps = chart.get("timestamp", [])
+            quote_data = chart.get("indicators", {}).get("quote", [{}])[0]
+            adj_close_list = chart.get("indicators", {}).get("adjclose", [{}])
+            adj_closes = adj_close_list[0].get("adjclose", []) if adj_close_list else []
+
+            opens = quote_data.get("open", [])
+            highs = quote_data.get("high", [])
+            lows = quote_data.get("low", [])
+            closes = quote_data.get("close", [])
+            volumes = quote_data.get("volume", [])
+
+            ohlc_series = []
+            valid_closes = []
+
+            for i, ts in enumerate(timestamps):
+                c = closes[i] if i < len(closes) else None
+                o = opens[i] if i < len(opens) else None
+                h = highs[i] if i < len(highs) else None
+                lo = lows[i] if i < len(lows) else None
+                v = volumes[i] if i < len(volumes) else None
+                ac = adj_closes[i] if i < len(adj_closes) else c
+
+                if c is None:
+                    continue
+
+                valid_closes.append(c)
+                date_str = datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")
+
+                ohlc_series.append({
+                    "date": date_str,
+                    "Open": round(float(o), 3) if o is not None else None,
+                    "High": round(float(h), 3) if h is not None else None,
+                    "Low": round(float(lo), 3) if lo is not None else None,
+                    "Close": round(float(c), 3),
+                    "Adj Close": round(float(ac), 3) if ac is not None else round(float(c), 3),
+                    "Volume": int(v) if v is not None else 0,
+                })
+
+            if not valid_closes:
+                continue
+
+            indicators = _compute_indicators(valid_closes, meta)
+
+            latest_close = meta.get("regularMarketPrice") or valid_closes[-1]
+            prev_close = meta.get("previousClose") or (valid_closes[-2] if len(valid_closes) > 1 else valid_closes[-1])
+            change_pct = meta.get("regularMarketChangePercent") or (
+                ((latest_close - prev_close) / prev_close * 100) if prev_close else 0
+            )
+            latest_open = next((o["Open"] for o in reversed(ohlc_series) if o["Open"] is not None), prev_close)
+            latest_vol = next((o["Volume"] for o in reversed(ohlc_series) if o["Volume"]), 0)
+
+            quote = {
+                "ticker": symbol,
+                "Quote Price": round(float(latest_close), 3),
+                "Previous Close": round(float(prev_close), 3),
+                "Open": round(float(latest_open), 3),
+                "Volume": int(latest_vol),
+                "change_percent": round(change_pct, 2),
+                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "company": meta.get("shortName") or meta.get("symbol", symbol),
+                "data_source": "yahoo_finance",
+            }
+
+            return {
+                "quote": quote,
+                "ohlc_series": ohlc_series,
+                "indicators": indicators,
+                "period": period,
+            }
+
+        except Exception:
+            continue
+
+    return None
+
+
+def _compute_indicators(closes: list[float], meta: dict) -> dict:
+    """Calculate MA5, MA20, annualised volatility, 52w high/low, day's range."""
+    import math
+
+    n = len(closes)
+    ma5 = round(sum(closes[-5:]) / min(n, 5), 3) if n >= 1 else None
+    ma20 = round(sum(closes[-20:]) / min(n, 20), 3) if n >= 1 else None
+
+    volatility = None
+    if n >= 2:
+        returns = [(closes[i] - closes[i - 1]) / closes[i - 1] for i in range(1, n)]
+        mean_r = sum(returns) / len(returns)
+        variance = sum((r - mean_r) ** 2 for r in returns) / len(returns)
+        daily_std = math.sqrt(variance)
+        volatility = round(daily_std * math.sqrt(252) * 100, 2)
+
+    return {
+        "MA5": ma5,
+        "MA20": ma20,
+        "volatility_annual_pct": volatility,
+        "week52_high": meta.get("fiftyTwoWeekHigh"),
+        "week52_low": meta.get("fiftyTwoWeekLow"),
+        "days_high": meta.get("regularMarketDayHigh"),
+        "days_low": meta.get("regularMarketDayLow"),
+    }
