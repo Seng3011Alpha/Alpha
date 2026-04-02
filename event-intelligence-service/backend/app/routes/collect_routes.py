@@ -3,19 +3,19 @@ import time
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
-from prometheus_client import Counter, Histogram
 
 from app.collectors import fetch_financial_news, fetch_stock_data, fetch_multiple_stocks, fetch_stock_history
+from app.observability import meter
 from app.services import save_raw, save_standardised, analyse_sentiment, extract_related_stocks
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/collect", tags=["Data Collection"])
 
-PIPELINE_RUNS = Counter("pipeline_runs_total", "Total pipeline executions")
-STOCKS_FETCHED = Counter("stocks_fetched_total", "Stocks fetched", ["ticker"])
-NEWS_COLLECTED = Counter("news_articles_collected_total", "News articles collected")
-STOCK_FAILURES = Counter("stock_fetch_failures_total", "Stock fetch failures", ["ticker"])
-PIPELINE_DURATION = Histogram("pipeline_duration_seconds", "Pipeline execution time")
+PIPELINE_RUNS = meter.create_counter("pipeline_runs_total", description="Total pipeline executions")
+STOCKS_FETCHED = meter.create_counter("stocks_fetched_total", description="Stocks fetched")
+NEWS_COLLECTED = meter.create_counter("news_articles_collected_total", description="News articles collected")
+STOCK_FAILURES = meter.create_counter("stock_fetch_failures_total", description="Stock fetch failures")
+PIPELINE_DURATION = meter.create_histogram("pipeline_duration_seconds", description="Pipeline execution time")
 
 
 @router.post("/stocks")
@@ -26,11 +26,11 @@ def collect_stocks(tickers: str | None = Query(None, description="Comma-separate
     data = fetch_multiple_stocks(ticker_list)
     if not data:
         for t in ticker_list:
-            STOCK_FAILURES.labels(ticker=t).inc()
+            STOCK_FAILURES.add(1, {"ticker": t})
         logger.warning("stock_fetch_failed", extra={"tickers": ticker_list})
         raise HTTPException(status_code=503, detail="Failed to fetch stock data")
     for d in data:
-        STOCKS_FETCHED.labels(ticker=d["ticker"]).inc()
+        STOCKS_FETCHED.add(1, {"ticker": d["ticker"]})
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     save_raw(data, "stocks", f"stocks_{ts}.json")
     logger.info("stocks_collected", extra={"count": len(data), "tickers": [d["ticker"] for d in data]})
@@ -41,7 +41,7 @@ def collect_stocks(tickers: str | None = Query(None, description="Comma-separate
 def collect_news():
     #collect australian stock market news from google news rss
     articles = fetch_financial_news()
-    NEWS_COLLECTED.inc(len(articles))
+    NEWS_COLLECTED.add(len(articles))
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     save_raw(articles, "news", f"news_{ts}.json")
     logger.info("news_collected", extra={"count": len(articles)})
@@ -53,10 +53,7 @@ def collect_history(
     tickers: str | None = Query(None, description="Comma-separated: BHP,CBA,NAB"),
     period: str = Query("1mo", description="History period: 1mo, 3mo, 6mo, 1y"),
 ):
-    """
-    Collect historical OHLCV + indicators for given tickers and save as ADAGE events.
-    Stores each day as a Stock ohlc event and indicators as a Stock analysis event.
-    """
+    
     allowed_periods = {"1mo", "3mo", "6mo", "1y"}
     if period not in allowed_periods:
         raise HTTPException(status_code=400, detail=f"period must be one of {allowed_periods}")
@@ -71,13 +68,13 @@ def collect_history(
     for ticker in ticker_list:
         hist = fetch_stock_history(ticker, period=period)
         if not hist:
-            STOCK_FAILURES.labels(ticker=ticker.upper()).inc()
+            STOCK_FAILURES.add(1, {"ticker": ticker.upper()})
             logger.warning("stock_history_fetch_failed", extra={"ticker": ticker, "period": period})
             continue
 
         collected.append(ticker.upper())
         sym = hist["quote"]["ticker"]
-        STOCKS_FETCHED.labels(ticker=sym).inc()
+        STOCKS_FETCHED.add(1, {"ticker": sym})
 
         for row in hist["ohlc_series"]:
             events.append({
@@ -150,8 +147,8 @@ def run_pipeline(
     news = fetch_financial_news()
 
     for s in stocks:
-        STOCKS_FETCHED.labels(ticker=s.get("ticker", "unknown")).inc()
-    NEWS_COLLECTED.inc(len(news))
+        STOCKS_FETCHED.add(1, {"ticker": s.get("ticker", "unknown")})
+    NEWS_COLLECTED.add(len(news))
 
     events = []
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -203,7 +200,7 @@ def run_pipeline(
     save_standardised(dataset, "combined_events.json")
 
     _duration = round(time.time() - _start, 3)
-    PIPELINE_DURATION.observe(_duration)
+    PIPELINE_DURATION.record(_duration)
     logger.info(
         "pipeline_complete",
         extra={

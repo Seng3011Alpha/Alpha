@@ -5,14 +5,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
-from fastapi import FastAPI, Request
+import app.observability  
+
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pythonjsonlogger import jsonlogger
 
 from app.routes import collect_router, analysis_router
 
-# JSON structured logging to stdout
 _handler = logging.StreamHandler()
 _handler.setFormatter(jsonlogger.JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
 logging.getLogger().addHandler(_handler)
@@ -33,8 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Prometheus: auto-instruments all routes and exposes /metrics
-Instrumentator().instrument(app).expose(app)
+# OTel: auto-instruments all routes (http.server.duration etc.)
+FastAPIInstrumentor.instrument_app(app)
 
 app.include_router(collect_router)
 app.include_router(analysis_router)
@@ -60,6 +62,11 @@ async def log_requests(request: Request, call_next):
         },
     )
     return response
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics_endpoint():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/")
