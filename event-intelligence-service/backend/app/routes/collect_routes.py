@@ -140,7 +140,7 @@ def run_pipeline(
     ticker_list = [t.strip() for t in tickers.split(",") if t.strip()] if tickers else default
 
     logger.info("pipeline_started", extra={"tickers": ticker_list})
-    PIPELINE_RUNS.inc()
+    PIPELINE_RUNS.add(1)
     _start = time.time()
 
     stocks = fetch_multiple_stocks(ticker_list)
