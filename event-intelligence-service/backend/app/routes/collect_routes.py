@@ -1,10 +1,21 @@
+import logging
+import time
 from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query
+from prometheus_client import Counter, Histogram
 
 from app.collectors import fetch_financial_news, fetch_stock_data, fetch_multiple_stocks, fetch_stock_history
 from app.services import save_raw, save_standardised, analyse_sentiment, extract_related_stocks
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/collect", tags=["Data Collection"])
+
+PIPELINE_RUNS = Counter("pipeline_runs_total", "Total pipeline executions")
+STOCKS_FETCHED = Counter("stocks_fetched_total", "Stocks fetched", ["ticker"])
+NEWS_COLLECTED = Counter("news_articles_collected_total", "News articles collected")
+STOCK_FAILURES = Counter("stock_fetch_failures_total", "Stock fetch failures", ["ticker"])
+PIPELINE_DURATION = Histogram("pipeline_duration_seconds", "Pipeline execution time")
 
 
 @router.post("/stocks")
@@ -14,9 +25,15 @@ def collect_stocks(tickers: str | None = Query(None, description="Comma-separate
     ticker_list = [t.strip() for t in tickers.split(",") if t.strip()] if tickers else default
     data = fetch_multiple_stocks(ticker_list)
     if not data:
+        for t in ticker_list:
+            STOCK_FAILURES.labels(ticker=t).inc()
+        logger.warning("stock_fetch_failed", extra={"tickers": ticker_list})
         raise HTTPException(status_code=503, detail="Failed to fetch stock data")
+    for d in data:
+        STOCKS_FETCHED.labels(ticker=d["ticker"]).inc()
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     save_raw(data, "stocks", f"stocks_{ts}.json")
+    logger.info("stocks_collected", extra={"count": len(data), "tickers": [d["ticker"] for d in data]})
     return {"collected": len(data), "tickers": [d["ticker"] for d in data]}
 
 
@@ -24,8 +41,10 @@ def collect_stocks(tickers: str | None = Query(None, description="Comma-separate
 def collect_news():
     #collect australian stock market news from google news rss
     articles = fetch_financial_news()
+    NEWS_COLLECTED.inc(len(articles))
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     save_raw(articles, "news", f"news_{ts}.json")
+    logger.info("news_collected", extra={"count": len(articles)})
     return {"collected": len(articles)}
 
 
@@ -52,10 +71,13 @@ def collect_history(
     for ticker in ticker_list:
         hist = fetch_stock_history(ticker, period=period)
         if not hist:
+            STOCK_FAILURES.labels(ticker=ticker.upper()).inc()
+            logger.warning("stock_history_fetch_failed", extra={"ticker": ticker, "period": period})
             continue
 
         collected.append(ticker.upper())
         sym = hist["quote"]["ticker"]
+        STOCKS_FETCHED.labels(ticker=sym).inc()
 
         for row in hist["ohlc_series"]:
             events.append({
@@ -102,6 +124,7 @@ def collect_history(
     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     save_raw(dataset, "stocks", f"history_{ts}.json")
     save_standardised(dataset, "history_events.json")
+    logger.info("history_collected", extra={"tickers": collected, "period": period, "events": len(events)})
 
     return {
         "tickers": collected,
@@ -119,8 +142,16 @@ def run_pipeline(
     default = ["BHP", "CBA", "NAB", "WBC", "ANZ"]
     ticker_list = [t.strip() for t in tickers.split(",") if t.strip()] if tickers else default
 
+    logger.info("pipeline_started", extra={"tickers": ticker_list})
+    PIPELINE_RUNS.inc()
+    _start = time.time()
+
     stocks = fetch_multiple_stocks(ticker_list)
     news = fetch_financial_news()
+
+    for s in stocks:
+        STOCKS_FETCHED.labels(ticker=s.get("ticker", "unknown")).inc()
+    NEWS_COLLECTED.inc(len(news))
 
     events = []
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -170,4 +201,16 @@ def run_pipeline(
     }
 
     save_standardised(dataset, "combined_events.json")
+
+    _duration = round(time.time() - _start, 3)
+    PIPELINE_DURATION.observe(_duration)
+    logger.info(
+        "pipeline_complete",
+        extra={
+            "stocks_collected": len(stocks),
+            "articles_collected": len(news),
+            "events_total": len(events),
+            "duration_seconds": _duration,
+        },
+    )
     return {"events_count": len(events), "stocks": len(stocks), "news": len(news)}
