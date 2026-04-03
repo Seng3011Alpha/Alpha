@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 import app.observability  # noqa: E402
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -67,7 +68,12 @@ async def log_requests(request: Request, call_next):
 
 
 @app.get("/metrics", include_in_schema=False)
-def metrics_endpoint():
+def metrics_endpoint(request: Request):
+    token = os.environ.get("METRICS_BEARER_TOKEN")
+    if token:
+        auth = request.headers.get("Authorization", "")
+        if auth != f"Bearer {token}":
+            raise HTTPException(status_code=401, detail="Unauthorized")
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
