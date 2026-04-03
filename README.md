@@ -60,3 +60,23 @@ Our service exposes REST API endpoints for data collection, storage, analytics, 
 | GET | /api/sentiment | Retrieve sentiment analysis |
 | GET | /api/events | Retrieve event datasets |
 
+
+## Running the Service
+
+### Run with Docker
+```bash
+docker-compose up --build
+
+
+---
+
+# Testing section
+```markdown
+## Testing
+
+Tests are implemented to validate API endpoints and data processing.
+
+Run tests using:
+```bash
+pytest
+
