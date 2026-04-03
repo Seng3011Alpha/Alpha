@@ -68,8 +68,6 @@ Our service exposes REST API endpoints for data collection, storage, analytics, 
 docker-compose up --build
 
 
----
-
 # Testing section
 ```markdown
 ## Testing
