@@ -9,7 +9,7 @@ The service integrates into the Event Intelligence Ecosystem and is designed to 
 
 - [Microservices](#microservices)
 - [API Overview](#api-overview)
-- [Running the service](#running-the-service)e this ethis
+- [Running the service](#running-the-service)
 - [Testing](#testing)
 - [Observability](#observability)
 - [Interoperability](#interoperability)
