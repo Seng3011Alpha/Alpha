@@ -5,22 +5,24 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
-import app.observability  
-
-from fastapi import FastAPI, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+# Logging must be configured before observability.py is imported
+# so that grafana_cloud_push_enabled/disabled is visible in the logs
 from pythonjsonlogger import jsonlogger
-
-from app.routes import collect_router, analysis_router
-
 _handler = logging.StreamHandler()
 _handler.setFormatter(jsonlogger.JsonFormatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
 logging.getLogger().addHandler(_handler)
 logging.getLogger().setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
+
+import app.observability  # noqa: E402
+
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+from app.routes import collect_router, analysis_router
 
 app = FastAPI(
     title="Event Intelligence API",
