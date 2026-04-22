@@ -80,3 +80,10 @@ def metrics_endpoint(request: Request):
 @app.get("/")
 def root():
     return {"message": "Event Intelligence API", "docs": "/docs"}
+
+
+@app.get("/debug/env", include_in_schema=False)
+def debug_env():
+    key = os.getenv("ANTHROPIC_API_KEY", "")
+    return {"anthropic_key_set": bool(key), "anthropic_key_prefix": key[:10] if key else ""}
+
