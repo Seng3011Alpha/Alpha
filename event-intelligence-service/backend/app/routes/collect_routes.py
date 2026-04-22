@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.collectors import fetch_financial_news, fetch_stock_data, fetch_multiple_stocks, fetch_stock_history
 from app.observability import meter
-from app.services import save_raw, save_standardised, analyse_sentiment, extract_related_stocks
+from app.services import save_raw, save_standardised, analyse_sentiment_llm, extract_related_stocks
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/collect", tags=["Data Collection"])
@@ -170,7 +170,7 @@ def run_pipeline(
 
     for n in news:
         text = f"{n.get('title', '')} {n.get('description', '')}"
-        sentiment, score = analyse_sentiment(text)
+        sentiment, score = analyse_sentiment_llm(text)
         related = extract_related_stocks(text, [t.replace(".AX", "") for t in ticker_list])
         events.append({
             "time_object": {"timestamp": now, "duration": 1, "duration_unit": "hour", "timezone": "UTC"},

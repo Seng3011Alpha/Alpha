@@ -34,3 +34,21 @@ def _setup() -> None:
 
 _setup()
 meter = metrics.get_meter("event_intelligence")
+
+LLM_SENTIMENT_CALLS = meter.create_counter(
+    "llm_sentiment_calls_total", description="Claude sentiment calls"
+)
+LLM_REPORT_CALLS = meter.create_counter(
+    "llm_report_calls_total", description="Claude written report calls"
+)
+LLM_LATENCY = meter.create_histogram(
+    "llm_latency_seconds", description="Claude API latency"
+)
+
+
+def record_llm_call(kind: str, seconds: float) -> None:
+    if kind == "sentiment":
+        LLM_SENTIMENT_CALLS.add(1)
+    elif kind == "report":
+        LLM_REPORT_CALLS.add(1)
+    LLM_LATENCY.record(seconds, {"kind": kind})

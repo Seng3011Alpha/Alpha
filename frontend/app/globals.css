@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 14% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 14% 14%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --accent: 217 91% 55%;
+    --accent-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 217 91% 55%;
+    --success: 142 71% 38%;
+    --danger: 0 72% 45%;
+    --warning: 38 92% 50%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 20% 9%;
+    --foreground: 210 20% 95%;
+    --card: 222 18% 12%;
+    --card-foreground: 210 20% 95%;
+    --muted: 222 15% 18%;
+    --muted-foreground: 217 10% 65%;
+    --primary: 210 20% 95%;
+    --primary-foreground: 222 20% 9%;
+    --secondary: 222 15% 18%;
+    --secondary-foreground: 210 20% 95%;
+    --accent: 217 91% 60%;
+    --accent-foreground: 222 20% 9%;
+    --border: 222 15% 22%;
+    --input: 222 15% 22%;
+    --ring: 217 91% 60%;
+    --success: 142 62% 48%;
+    --danger: 0 72% 58%;
+    --warning: 38 92% 60%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  html,
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+@layer components {
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground;
+  }
+  .chip-success {
+    @apply border-transparent bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))];
+  }
+  .chip-danger {
+    @apply border-transparent bg-[hsl(var(--danger)/0.12)] text-[hsl(var(--danger))];
+  }
+  .chip-warning {
+    @apply border-transparent bg-[hsl(var(--warning)/0.12)] text-[hsl(var(--warning))];
+  }
+}

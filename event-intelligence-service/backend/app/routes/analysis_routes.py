@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 
 from app.collectors import fetch_financial_news, fetch_stock_data, fetch_stock_history
-from app.services import load_standardised, analyse_sentiment, extract_related_stocks
+from app.services import load_standardised, analyse_sentiment_llm, extract_related_stocks
+from app.services.report_service import generate_stock_report
 
 router = APIRouter(prefix="/api", tags=["Data Retrieval & Analysis"])
 
@@ -62,7 +63,7 @@ def get_news(
     events = []
     for a in articles[:limit]:
         text = f"{a.get('title', '')} {a.get('description', '')}"
-        sentiment, score = analyse_sentiment(text)
+        sentiment, score = analyse_sentiment_llm(text)
         related = extract_related_stocks(text, [sym.replace(".AX", "")] if sym else [])
         events.append({
             "time_object": {"timestamp": a.get("published_at", now), "duration": 1, "duration_unit": "hour", "timezone": "UTC"},
@@ -245,7 +246,7 @@ def get_sentiment(stock: str = Query(..., description="ASX ticker e.g. BHP or BH
         news_events = []
         for a in articles[:10]:
             text = f"{a.get('title', '')} {a.get('description', '')}"
-            sentiment, score = analyse_sentiment(text)
+            sentiment, score = analyse_sentiment_llm(text)
             related = extract_related_stocks(text, [sym.replace(".AX", "")])
             news_events.append({
                 "attribute": {
@@ -291,3 +292,70 @@ def get_events():
     if not data:
         raise HTTPException(status_code=404, detail="No data available. Run POST /collect/pipeline first.")
     return data
+
+
+# ---------------------------------------------------------------------------
+# /api/report
+# ---------------------------------------------------------------------------
+
+@router.get("/report")
+def get_report(
+    stock: str = Query(..., description="ASX ticker e.g. BHP or BHP.AX"),
+    force_refresh: bool = Query(False, description="Bypass the daily cache"),
+):
+    """Return an analyst-style written report synthesised by Claude from quote, news, indicators."""
+    sym = _normalise(stock)
+    now = _now_iso()
+
+    combined = load_standardised("combined_events.json")
+    quote_attr: dict | None = None
+    news_attrs: list[dict] = []
+    if combined:
+        for e in combined["events"]:
+            if e["event_type"] == "Stock quote" and e["attribute"].get("ticker") == sym and quote_attr is None:
+                quote_attr = e["attribute"]
+            elif e["event_type"] == "Stock news" and e["attribute"].get("related_stock") == sym:
+                news_attrs.append(e["attribute"])
+        if len(news_attrs) < 5:
+            general = [e["attribute"] for e in combined["events"] if e["event_type"] == "Stock news" and not e["attribute"].get("related_stock")]
+            news_attrs = (news_attrs + general)[:15]
+
+    if not quote_attr:
+        live = fetch_stock_data(sym)
+        if live:
+            quote_attr = live
+
+    if not news_attrs:
+        articles = fetch_financial_news()
+        for a in articles[:15]:
+            text = f"{a.get('title', '')} {a.get('description', '')}"
+            sentiment, score = analyse_sentiment_llm(text)
+            news_attrs.append({
+                "title": a.get("title"),
+                "source": a.get("source"),
+                "link": a.get("url"),
+                "published": a.get("published_at"),
+                "sentiment": sentiment,
+                "impact_score": score,
+            })
+
+    indicators: dict | None = None
+    history = load_standardised("history_events.json")
+    if history:
+        for e in history["events"]:
+            if e["event_type"] == "Stock analysis" and e["attribute"].get("ticker") == sym:
+                indicators = {k: v for k, v in e["attribute"].items() if k not in ("ticker", "data_source", "period")}
+                break
+
+    if indicators is None:
+        live_hist = fetch_stock_history(sym, period="1mo")
+        if live_hist:
+            indicators = live_hist["indicators"]
+
+    return generate_stock_report(
+        ticker=sym,
+        quote=quote_attr,
+        news=news_attrs[:15],
+        indicators=indicators,
+        force_refresh=force_refresh,
+    )
