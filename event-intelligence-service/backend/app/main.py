@@ -26,7 +26,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from app.routes import collect_router, analysis_router
 
 app = FastAPI(
-    title="Event Intelligence API",
+    title="Tickertone API",
     description="Stock + News sentiment for ASX traders",
     version="0.1.0",
 )
@@ -79,7 +79,7 @@ def metrics_endpoint(request: Request):
 
 @app.get("/")
 def root():
-    return {"message": "Event Intelligence API", "docs": "/docs"}
+    return {"message": "Tickertone API", "docs": "/docs"}
 
 
 @app.get("/debug/env", include_in_schema=False)

@@ -8,7 +8,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="container flex h-14 items-center">
           <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
             <LineChart className="h-5 w-5 text-accent" />
-            Alpha-2
+            Tickertone
           </Link>
         </div>
       </header>

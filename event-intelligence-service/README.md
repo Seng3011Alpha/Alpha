@@ -1,4 +1,4 @@
-# Event Intelligence Service
+# Tickertone - Event Intelligence Service
 
 ASX stock prices + financial news sentiment for short-medium term traders.
 
