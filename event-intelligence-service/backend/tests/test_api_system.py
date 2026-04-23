@@ -174,10 +174,28 @@ class TestCollectNews:
             assert response.json()["collected"] == 3
 
 
+class TestCollectReddit:
+    def test_collect_reddit_success(self):
+        mock_posts = [{"id": "abc123", "title": "ASX rally", "body": "BHP up", "subreddit": "ASX_Bets"}]
+        with patch("app.routes.collect_routes.fetch_reddit_posts", return_value=mock_posts), \
+             patch("app.routes.collect_routes.save_raw"):
+            response = client.post("/collect/reddit")
+            assert response.status_code == 200
+            assert response.json()["collected"] == 1
+
+    def test_collect_reddit_forwards_query_params(self):
+        with patch("app.routes.collect_routes.fetch_reddit_posts", return_value=[]) as mock_fetch, \
+             patch("app.routes.collect_routes.save_raw"):
+            response = client.post("/collect/reddit?query=ASX&subreddit=ASX_Bets&limit=5")
+            assert response.status_code == 200
+            mock_fetch.assert_called_once_with(query="ASX", subreddit="ASX_Bets", limit=5)
+
+
 class TestCollectPipeline:
     def test_pipeline_success(self):
         with patch("app.routes.collect_routes.fetch_multiple_stocks", return_value=[MOCK_STOCK]), \
              patch("app.routes.collect_routes.fetch_financial_news", return_value=MOCK_NEWS), \
+             patch("app.routes.collect_routes.fetch_reddit_posts", return_value=[]), \
              patch("app.routes.collect_routes.save_standardised"):
             response = client.post("/collect/pipeline")
             assert response.status_code == 200
@@ -189,6 +207,7 @@ class TestCollectPipeline:
     def test_pipeline_custom_tickers(self):
         with patch("app.routes.collect_routes.fetch_multiple_stocks", return_value=[MOCK_STOCK]) as mock_fetch, \
              patch("app.routes.collect_routes.fetch_financial_news", return_value=[]), \
+             patch("app.routes.collect_routes.fetch_reddit_posts", return_value=[]), \
              patch("app.routes.collect_routes.save_standardised"):
             client.post("/collect/pipeline?tickers=RIO,WDS")
             called_with = mock_fetch.call_args[0][0]

@@ -4,7 +4,12 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.collectors import fetch_financial_news, fetch_stock_data, fetch_multiple_stocks, fetch_stock_history
+from app.collectors import (
+    fetch_financial_news,
+    fetch_multiple_stocks,
+    fetch_reddit_posts,
+    fetch_stock_history,
+)
 from app.observability import meter
 from app.services import save_raw, save_standardised, analyse_sentiment_llm, extract_related_stocks
 
@@ -46,6 +51,24 @@ def collect_news():
     save_raw(articles, "news", f"news_{ts}.json")
     logger.info("news_collected", extra={"count": len(articles)})
     return {"collected": len(articles)}
+
+
+@router.post("/reddit")
+def collect_reddit(
+    query: str | None = Query(None, description="Custom Reddit search query"),
+    subreddit: str | None = Query(None, description="Target subreddit, e.g. ASX_Bets"),
+    limit: int | None = Query(None, description="Max Reddit posts to fetch", ge=1, le=100),
+):
+    # collect Reddit posts from external API into raw storage for inspection/debugging
+    posts = fetch_reddit_posts(query=query, subreddit=subreddit, limit=limit)
+    NEWS_COLLECTED.add(len(posts))
+    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    save_raw(posts, "news", f"reddit_{ts}.json")
+    logger.info(
+        "reddit_collected",
+        extra={"count": len(posts), "query": query, "subreddit": subreddit, "limit": limit},
+    )
+    return {"collected": len(posts)}
 
 
 @router.post("/history")
@@ -145,10 +168,11 @@ def run_pipeline(
 
     stocks = fetch_multiple_stocks(ticker_list)
     news = fetch_financial_news()
+    reddit_posts = fetch_reddit_posts()
 
     for s in stocks:
         STOCKS_FETCHED.add(1, {"ticker": s.get("ticker", "unknown")})
-    NEWS_COLLECTED.add(len(news))
+    NEWS_COLLECTED.add(len(news) + len(reddit_posts))
 
     events = []
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -189,6 +213,29 @@ def run_pipeline(
             },
         })
 
+    for p in reddit_posts:
+        text = f"{p.get('title', '')} {p.get('body', '')}"
+        sentiment, score = analyse_sentiment_llm(text)
+        related = extract_related_stocks(text, [t.replace(".AX", "") for t in ticker_list])
+        events.append({
+            "time_object": {"timestamp": p.get("created_at", now), "duration": 1, "duration_unit": "hour", "timezone": "UTC"},
+            "event_type": "Stock news",
+            "attribute": {
+                "summary": (p.get("title") or "")[:200],
+                "title": p.get("title"),
+                "link": f"https://www.reddit.com/r/{p.get('subreddit')}/comments/{p.get('id')}" if p.get("id") and p.get("subreddit") else None,
+                "published": p.get("created_at"),
+                "source": f"r/{p.get('subreddit')}" if p.get("subreddit") else "reddit",
+                "region": "AU",
+                "sentiment": sentiment,
+                "impact_score": score,
+                "related_stock": related[0] if related else None,
+                "author": p.get("author"),
+                "reddit_score": p.get("score", 0),
+                "data_source": "reddit_external_api",
+            },
+        })
+
     dataset = {
         "data_source": "event_intelligence",
         "dataset_type": "Mixed",
@@ -206,8 +253,9 @@ def run_pipeline(
         extra={
             "stocks_collected": len(stocks),
             "articles_collected": len(news),
+            "reddit_posts_collected": len(reddit_posts),
             "events_total": len(events),
             "duration_seconds": _duration,
         },
     )
-    return {"events_count": len(events), "stocks": len(stocks), "news": len(news)}
+    return {"events_count": len(events), "stocks": len(stocks), "news": len(news), "reddit_posts": len(reddit_posts)}

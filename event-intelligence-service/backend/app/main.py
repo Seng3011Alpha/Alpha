@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -25,10 +26,17 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from app.routes import collect_router, analysis_router
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    logger.info("startup", extra={"version": "0.1.0"})
+    yield
+
+
 app = FastAPI(
     title="Tickertone API",
     description="Stock + News sentiment for ASX traders",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -43,12 +51,6 @@ FastAPIInstrumentor.instrument_app(app)
 
 app.include_router(collect_router)
 app.include_router(analysis_router)
-
-
-@app.on_event("startup")
-def on_startup():
-    logger.info("startup", extra={"version": "0.1.0"})
-
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
