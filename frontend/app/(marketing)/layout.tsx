@@ -6,7 +6,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <Navbar />
       <main className="flex-1">{children}</main>
       <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
-        Alpha-2 · built for SENG3011 · data for research only, not investment advice
+        Tickertone · built for SENG3011 · data for research only, not investment advice
       </footer>
     </div>
   );

@@ -22,7 +22,7 @@ export async function Navbar() {
       <div className="container flex h-14 items-center justify-between">
         <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <LineChart className="h-5 w-5 text-accent" />
-          Alpha-2
+          Tickertone
         </Link>
         <nav className="flex items-center gap-4 text-sm">
           {user ? (
