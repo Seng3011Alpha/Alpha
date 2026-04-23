@@ -142,64 +142,62 @@ export function ScanView({ ticker }: { ticker: string }) {
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
-            <CardTitle className="text-base">Price</CardTitle>
-            <Tabs value={period} onValueChange={onPeriodChange}>
-              <TabsList>
-                {PERIODS.map((p) => (
-                  <TabsTrigger key={p} value={p}>
-                    {p}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </CardHeader>
-          <CardContent>
-            {chartLoading || !chartData ? (
-              <Skeleton className="h-72 w-full" />
-            ) : (
-              <PriceChart
-                data={chartData.ohlc_series.map((r) => ({ date: r.date, Close: r.Close }))}
-              />
-            )}
-            <IndicatorsGrid indicators={chartData?.indicators ?? null} />
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+          <CardTitle className="text-base">Price</CardTitle>
+          <Tabs value={period} onValueChange={onPeriodChange}>
+            <TabsList>
+              {PERIODS.map((p) => (
+                <TabsTrigger key={p} value={p}>
+                  {p}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </CardHeader>
+        <CardContent>
+          {chartLoading || !chartData ? (
+            <Skeleton className="h-72 w-full" />
+          ) : (
+            <PriceChart
+              data={chartData.ohlc_series.map((r) => ({ date: r.date, Close: r.Close }))}
+            />
+          )}
+          <IndicatorsGrid indicators={chartData?.indicators ?? null} />
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Daily report</CardTitle>
-              {data.report ? (
-                <SentimentBadge sentiment={data.report.overall_sentiment} />
-              ) : null}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Daily report</CardTitle>
             {data.report ? (
-              <>
-                <MarkdownReport body={data.report.summary} />
-                {data.report.key_drivers.length > 0 ? (
-                  <BulletBlock title="Key drivers" items={data.report.key_drivers} tone="success" />
-                ) : null}
-                {data.report.risks.length > 0 ? (
-                  <BulletBlock title="Risks" items={data.report.risks} tone="danger" />
-                ) : null}
-                <p className="text-xs text-muted-foreground">
-                  model: {data.report.model} · articles considered: {data.report.articles_considered}
-                  {data.report.cached ? " · cached" : ""}
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Report could not be generated for this ticker.
+              <SentimentBadge sentiment={data.report.overall_sentiment} />
+            ) : null}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {data.report ? (
+            <>
+              <MarkdownReport body={data.report.summary} />
+              {data.report.key_drivers.length > 0 ? (
+                <BulletBlock title="Key drivers" items={data.report.key_drivers} tone="success" />
+              ) : null}
+              {data.report.risks.length > 0 ? (
+                <BulletBlock title="Risks" items={data.report.risks} tone="danger" />
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                model: {data.report.model} · articles considered: {data.report.articles_considered}
+                {data.report.cached ? " · cached" : ""}
               </p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Report could not be generated for this ticker.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <section>
         <div className="mb-3 flex items-center justify-between">
@@ -291,10 +289,8 @@ function ScanSkeleton() {
         <Skeleton className="h-7 w-40" />
         <Skeleton className="h-10 w-56" />
       </div>
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Skeleton className="h-96 lg:col-span-2" />
-        <Skeleton className="h-96" />
-      </div>
+      <Skeleton className="h-96 w-full" />
+      <Skeleton className="h-64 w-full" />
       <div className="grid gap-3 md:grid-cols-2">
         <Skeleton className="h-28" />
         <Skeleton className="h-28" />
