@@ -1,4 +1,4 @@
-# Alpha-2 frontend
+# Tickertone frontend
 
 Next.js 14 app (App Router) that consumes the FastAPI `event-intelligence-service` backend
 and layers on Supabase auth plus a three-tier scan-quota demo.

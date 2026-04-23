@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Alpha-2 · ASX intelligence",
+  title: "Tickertone · ASX intelligence",
   description:
     "Scan ASX stocks with live prices, LLM-powered news sentiment and an analyst-style daily report.",
 };
